@@ -1,0 +1,60 @@
+```{r}
+library(ggplot2)
+library(tidyr)
+library(tidyverse)
+
+readMagnetizationData <- function(N, T, H, time, th) {
+  file_path <- paste0("./data/magnetization/magnetization_N", format(N, scientific = FALSE), "_T", sprintf("%.2f", T), "_H", sprintf("%.2f", H), "_t", time, "_th", th, ".txt")
+  
+  if (file.exists(file_path)) {
+    data <- (read.csv(file_path))[,1]
+    return(data)
+  } else {
+    stop("File does not exist: ", file_path)
+  }
+}
+
+## H = 0
+df_H <- list()
+H_values <- c(-1, -0.7, -.5, -0.2, 0, 0.2, 0.5, 0.7, 1.0)
+T_values <- seq(1.1, 3.1, 0.2)
+
+for (h in 1:length(H_values)) {
+  v <- c()
+  for (i in 1:length(T_values)){
+    v <- c(v, mean(readMagnetizationData(100000, T_values[i], H_values[h], 5000, 10)))
+  }
+  df_H[[h]] <- v
+}
+df_H <- as.data.frame(df_H)
+names(df_H) <- H_values
+rownames(df_H) <- T_values
+
+df_H$Temperature <- as.numeric(rownames(df_H))
+
+
+df_H <- df_H %>%
+  mutate(Temperature = as.numeric(rownames(.))) %>%
+  pivot_longer(
+    cols = -Temperature,
+    names_to = "H",
+    values_to = "Magnetization"
+  )
+
+# Plot
+ggplot(df_H, aes(x = Temperature, y = Magnetization, color = H)) +
+  geom_line(size = 1.2) +
+  geom_point(size = 2) +
+  labs(
+    title = "Magnetizzazione media vs Temperatura per diversi H",
+    x = "Temperatura",
+    y = "Magnetizzazione media",
+    color = "Campo H"
+  ) +
+  theme_minimal()
+
+```
+
+```{r}
+df_H
+```

@@ -1,0 +1,298 @@
+#include "configuration.hpp"
+#include <iostream>
+
+// Standard constructor
+SpinConfiguration::SpinConfiguration(int N, double temperature, double p) : m_N(N), m_T(temperature) {
+    // Initialize the random engine
+    std::random_device rd;
+    m_rng = std::mt19937(rd());
+    // Reserve a bit of space in the heap so that we don't have to reallocate memory
+    m_spins.reserve(N);
+    // Initialize the MCMC engine (default to MetropolisHastings, if the user doesn't set it explicitly)
+    m_engine = MCMCengine(this, MCMCType::MetropolisHastings, m_N);
+    // Initialize spins randomly
+    std::uniform_real_distribution<double> dist(0, 1);
+    for (int i = 0; i < N; ++i) {
+        m_spins.push_back(dist(m_rng) < p);
+    }
+}
+
+SpinConfiguration::SpinConfiguration(int N, double temperature, double p, double h) : m_N(N), m_T(temperature), m_h(h) {
+    // Initialize the random engine
+    std::random_device rd;
+    m_rng = std::mt19937(rd());
+    // Reserve a bit of space in the heap so that we don't have to reallocate memory
+    m_spins.reserve(N);
+    // Initialize the MCMC engine (default to MetropolisHastings, if the user doesn't set it explicitly)
+    m_engine = MCMCengine(this, MCMCType::MetropolisHastings, m_N);
+    // Initialize spins randomly
+    std::uniform_real_distribution<double> dist(0, 1);
+    for (int i = 0; i < N; ++i) {
+        m_spins.push_back(dist(m_rng) < p);
+    }
+}
+
+// Getters
+double SpinConfiguration::getMagnetization() const {
+    int sum = 0;
+    for (const auto& spin : m_spins) {
+        sum += spin ? 1 : -1;
+    }
+    return static_cast<double>(sum) / double(m_N);
+}
+
+std::array<int, 4> SpinConfiguration::getNeighbourhoodSpins(int row, int col) const {
+    int L = static_cast<int>(std::sqrt(m_N));
+    std::array<int, 4> neighbours;
+    // PBC!
+    if(m_PBC){
+        int right_col = (col + 1) % L;
+        int left_col  = (col - 1 + L) % L;
+        int up_row    = (row - 1 + L) % L;
+        int down_row  = (row + 1) % L;
+        // get the values
+        neighbours[0] = m_spins[row * L + right_col] ? 1 : -1;  // Right
+        neighbours[1] = m_spins[row * L + left_col]  ? 1 : -1;  // Left
+        neighbours[2] = m_spins[up_row * L + col]    ? 1 : -1;  // Up
+        neighbours[3] = m_spins[down_row * L + col]  ? 1 : -1;  // Down
+    } else {
+        // Non-PBC case
+        neighbours[0] = (col < L - 1) ? (m_spins[row * L + (col + 1)] ? 1 : -1) : 0; // Right
+        neighbours[1] = (col > 0) ? (m_spins[row * L + (col - 1)] ? 1 : -1) : 0;     // Left
+        neighbours[2] = (row > 0) ? (m_spins[(row - 1) * L + col] ? 1 : -1) : 0;     // Up
+        neighbours[3] = (row < L - 1) ? (m_spins[(row + 1) * L + col] ? 1 : -1) : 0; // Down
+    }
+
+    return neighbours;
+}
+
+void SpinConfiguration::step() {
+    m_engine.run();
+}
+
+void SpinConfiguration::sweep() {
+    m_engine.sweep();
+}
+
+void SpinConfiguration::run(int MAX_TIME, int BURNIN, int THINNING) {
+    // Run the simulation for a given number of steps
+    m_results.getMagnetizations().reserve(MAX_TIME);
+    for (int time = 0; time < MAX_TIME; ++time) {
+        for(int _= 0; _ < THINNING; _++) {
+            this->sweep();
+        }
+        if (time >= BURNIN && m_keepTrackof[0]) {
+            m_results.storeMagnetization(this->getMagnetization());
+        }
+        if (time >= BURNIN && m_keepTrackof[1]) {
+            m_results.storeEnergy(this->getEnergy());
+        }
+    }
+}
+
+void SpinConfiguration::runGraphics(int MAX_TIME, int BURNIN, int THINNING, int sizeBlur = 0) {
+    int L = static_cast<int>(std::sqrt(m_N));
+    int controllerLength = 400;
+    int controllerHeight = 200;
+    sf::RenderWindow window(sf::VideoMode(800, 800), "Ising Model");
+    sf::RenderWindow controller(sf::VideoMode(controllerLength, controllerHeight), "Controller");
+    window.setFramerateLimit(60);
+    controller.setFramerateLimit(60);
+
+    m_results.getMagnetizations().reserve(MAX_TIME);
+
+    // Carica font
+    sf::Font font;
+    if (!font.loadFromFile("Ubuntu-Regular.ttf")) {
+        throw std::runtime_error("Could not load font");
+    }
+
+    // Dragging state per entrambi gli slider
+    bool draggingT = false;
+    bool draggingH = false;
+
+    // Parametri slider
+    float sliderWidth = 350.f;
+    float sliderHeight = 3.f;
+    float knobRadius = 5.f;
+
+    // Posizioni slider (uno sopra l'altro)
+    sf::Vector2f sliderPosition((controllerLength - sliderWidth) / 2.f, 100.f);         // Temperatura
+    sf::Vector2f sliderHPosition((controllerLength - sliderWidth) / 2.f, 100.f + sliderHeight + 40.f); // Campo magnetico
+
+    int time = 0;
+
+    while (window.isOpen() && controller.isOpen() && time < MAX_TIME) {
+        // Gestione eventi finestra principale
+        sf::Event event;
+        while (window.pollEvent(event)) {
+            if (event.type == sf::Event::Closed) {
+                window.close();
+                controller.close();
+            }
+        }
+
+        // Gestione eventi controller
+        while (controller.pollEvent(event)) {
+            if (event.type == sf::Event::Closed) {
+                controller.close();
+                window.close();
+            }
+            else if (event.type == sf::Event::MouseButtonPressed && event.mouseButton.button == sf::Mouse::Left) {
+                float mx = static_cast<float>(event.mouseButton.x);
+                float my = static_cast<float>(event.mouseButton.y);
+
+                // Check slider temperatura
+                if (mx >= sliderPosition.x && mx <= sliderPosition.x + sliderWidth &&
+                    my >= sliderPosition.y - 10 && my <= sliderPosition.y + sliderHeight + 10) {
+                    draggingT = true;
+                }
+                // Check slider campo magnetico
+                else if (mx >= sliderHPosition.x && mx <= sliderHPosition.x + sliderWidth &&
+                         my >= sliderHPosition.y - 10 && my <= sliderHPosition.y + sliderHeight + 10) {
+                    draggingH = true;
+                }
+            }
+            else if (event.type == sf::Event::MouseButtonReleased && event.mouseButton.button == sf::Mouse::Left) {
+                draggingT = false;
+                draggingH = false;
+            }
+            else if (event.type == sf::Event::MouseMoved) {
+                float mx = static_cast<float>(event.mouseMove.x);
+                if (draggingT) {
+                    mx = std::clamp(mx, sliderPosition.x, sliderPosition.x + sliderWidth);
+                    float ratio = (mx - sliderPosition.x) / sliderWidth;
+                    m_T = 0 + ratio * (5 - 0);
+                }
+                else if (draggingH) {
+                    mx = std::clamp(mx, sliderHPosition.x, sliderHPosition.x + sliderWidth);
+                    float ratioH = (mx - sliderHPosition.x) / sliderWidth;
+                    m_h = -1 + ratioH * (1 - (-1));
+                }
+            }
+        }
+
+        // Disegna la finestra principale
+        window.clear(sf::Color::Black);
+        int reducedL = L / (sizeBlur > 0 ? sizeBlur : 1);
+        for (int rrow = 0; rrow < reducedL; ++rrow) {
+            for (int rcol = 0; rcol < reducedL; ++rcol) {
+                sf::RectangleShape cell(sf::Vector2f(800.f / reducedL, 800.f / reducedL));
+                cell.setPosition(rcol * (800.f / reducedL), rrow * (800.f / reducedL));
+                double avgSpin = 0.;
+                for (int r = rcol * sizeBlur; r < (rcol + 1) * sizeBlur; ++r) {
+                    for (int c = rrow * sizeBlur; c < (rrow + 1) * sizeBlur; ++c) {
+                        int index = r * L + c;
+                        int spin = m_spins[index] ? 1 : -1;
+                        avgSpin += double(spin) / (sizeBlur * sizeBlur);
+                    }
+                }
+                int colorValue = static_cast<int>((avgSpin + 1) * 127.5);
+                colorValue = std::clamp(colorValue, 0, 255);
+                sf::Color color(colorValue, colorValue, colorValue);
+                cell.setFillColor(color);
+                window.draw(cell);
+            }
+        }
+
+        for (int _ = 0; _ < THINNING; ++_) {
+            this->sweep();
+        }
+        window.display();
+
+        // Statistiche
+        if (time >= BURNIN && m_keepTrackof[0]) {
+            m_results.storeMagnetization(this->getMagnetization());
+        }
+        if (time >= BURNIN && m_keepTrackof[1]) {
+            m_results.storeEnergy(this->getEnergy());
+        }
+        time++;
+
+        // Disegna controller
+        controller.clear(sf::Color(40, 40, 40));
+
+        // SIM STATUS
+        sf::Text burninInfo;
+        burninInfo.setFont(font);
+        burninInfo.setCharacterSize(16);
+        burninInfo.setFillColor(sf::Color::White);
+        std::string status;
+        if (time < BURNIN) {
+            status = "Burn-in phase: " + std::to_string(time) + "/" + std::to_string(BURNIN);
+        }
+        else {
+            status = "Simulation running: " + std::to_string(time - BURNIN) + "/" + std::to_string(MAX_TIME - BURNIN);
+        }
+        status += ".     1 frame =  " + std::to_string(THINNING) + " sweeps.";
+        burninInfo.setString(status);
+
+        // Centra testo
+        sf::FloatRect textRect = burninInfo.getLocalBounds();
+        burninInfo.setOrigin(textRect.left + textRect.width / 2.f, textRect.top + textRect.height / 2.f);
+        burninInfo.setPosition(controllerLength / 2.f, 20.f);
+        controller.draw(burninInfo);
+
+        // SLIDER TEMPERATURA
+        sf::RectangleShape sliderBar(sf::Vector2f(sliderWidth, sliderHeight));
+        sliderBar.setPosition(sliderPosition);
+        sliderBar.setFillColor(sf::Color(200, 200, 200));
+        controller.draw(sliderBar);
+
+        double normalizedT = (m_T - 0.) / (5. - 0.);
+        sf::CircleShape sliderKnob(knobRadius);
+        sliderKnob.setFillColor(sf::Color::White);
+        sliderKnob.setOrigin(knobRadius, knobRadius);
+        sliderKnob.setPosition(sliderPosition.x + normalizedT * sliderWidth, sliderPosition.y + sliderHeight / 2.f);
+        controller.draw(sliderKnob);
+
+        sf::Text textT;
+        textT.setFont(font);
+        textT.setCharacterSize(16);
+        textT.setFillColor(sf::Color::White);
+        textT.setString("T = " + std::to_string(m_T).substr(0, 4));
+        textT.setPosition(sliderPosition.x, sliderPosition.y - 30.f);
+        controller.draw(textT);
+
+        // SLIDER CAMPO MAGNETICO
+        sf::RectangleShape sliderHBar(sf::Vector2f(sliderWidth, sliderHeight));
+        sliderHBar.setPosition(sliderHPosition);
+        sliderHBar.setFillColor(sf::Color(200, 200, 200));
+        controller.draw(sliderHBar);
+
+        double normalizedH = (m_h - (-1.)) / (1. - (-1.));
+        sf::CircleShape sliderHKnob(knobRadius);
+        sliderHKnob.setFillColor(sf::Color::White);
+        sliderHKnob.setOrigin(knobRadius, knobRadius);
+        sliderHKnob.setPosition(sliderHPosition.x + normalizedH * sliderWidth, sliderHPosition.y + sliderHeight / 2.f);
+        controller.draw(sliderHKnob);
+
+        sf::Text textH;
+        textH.setFont(font);
+        textH.setCharacterSize(16);
+        textH.setFillColor(sf::Color::White);
+        textH.setString("H = " + std::to_string(m_h).substr(0, 4));
+        textH.setPosition(sliderHPosition.x, sliderHPosition.y - 30.f);
+        controller.draw(textH);
+
+        controller.display();
+    }
+}
+
+
+
+
+double SpinConfiguration::getEnergy() const {
+    double energy = 0.0;
+    int L = static_cast<int>(std::sqrt(m_N));
+    for (int i = 0; i < m_N; ++i) {
+        int row = i / L;
+        int col = i % L;
+        int spin = m_spins[i] ? 1 : -1;
+        std::array<int, 4> neighbours = this->getNeighbourhoodSpins(row, col);
+        for (int j = 0; j < 4; ++j) {
+            energy -= spin * neighbours[j]; // Interaction energy
+        }
+    }
+    return energy / 2.0; 
+}
