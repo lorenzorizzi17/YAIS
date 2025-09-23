@@ -4,11 +4,11 @@
 #include <sstream>
 #include <omp.h>
 
-#include "configuration.hpp"
+#include "ising/configuration.hpp"
 
 int main() {
     // Create a SpinConfiguration object
-    int N = 800*800; 
+    int N = 200*200; 
     double H = 0;
     int MAX_TIME = 1000;
     int THINNING = 10;
@@ -21,7 +21,7 @@ int main() {
     config.setPBC(true); // Set periodic boundary conditions
     config.keepTrack(false, false); // Magnetization only
     // Now run the MCMC chain
-    config.runGraphics(MAX_TIME, BURNIN, THINNING, 10);
+    config.runGraphics(MAX_TIME, BURNIN, THINNING, 1);
 
     // Get the results
     std::vector<double> energies = config.getResults().getEnergy();
