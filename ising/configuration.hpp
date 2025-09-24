@@ -58,7 +58,7 @@ class SpinConfiguration {
 
     // Graphics / simulations
     void run(int, int, int);
-    void runGraphics(int, int, int, int);
+    void runGraphics(int, int, int);
 
 };
 

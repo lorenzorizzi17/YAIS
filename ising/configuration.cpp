@@ -91,17 +91,21 @@ void SpinConfiguration::run(int MAX_TIME, int BURNIN, int THINNING) {
     }
 }
 
-void SpinConfiguration::runGraphics(int MAX_TIME, int BURNIN, int THINNING, int sizeBlur = 0) {
+void SpinConfiguration::runGraphics(int MAX_TIME, int THINNING, int sizeBlur = 0) {
+    int time = 0;
     int L = static_cast<int>(std::sqrt(m_N));
     int controllerLength = 400;
     int controllerHeight = 400;
     int upperSliderMargin = 50;
+    int downMargin = 30;
+
+    // Disable tracking by default in graphics mode
+    this->keepTrack(false, false) ; 
+
     sf::RenderWindow window(sf::VideoMode(800, 800), "Ising Model");
     sf::RenderWindow controller(sf::VideoMode(controllerLength, controllerHeight), "Controller");
     window.setFramerateLimit(60);
     controller.setFramerateLimit(60);
-
-    m_results.getMagnetizations().reserve(MAX_TIME);
 
     // Load the font
     sf::Font font;
@@ -109,23 +113,46 @@ void SpinConfiguration::runGraphics(int MAX_TIME, int BURNIN, int THINNING, int 
         throw std::runtime_error("Could not load font");
     }
 
+    //              SLIDERS              \\
     // Dragging state for both sliders
     bool draggingT = false;
     bool draggingH = false;
-
     // Slider parameters
     float sliderWidth = 350.f;
     float sliderHeight = 3.f;
     float knobRadius = 5.f;
-
+    float minH = -1.f, maxH = 1.f;
+    float maxTemp = 5.f;
     // Slider positions (one above the other)
     sf::Vector2f sliderPosition((controllerLength - sliderWidth) / 2.f, upperSliderMargin);         // Temperature
     sf::Vector2f sliderHPosition((controllerLength - sliderWidth) / 2.f, 2*upperSliderMargin + sliderHeight); // Magnetic field
 
-    int time = 0;
+    sf::RectangleShape sliderBar(sf::Vector2f(sliderWidth, sliderHeight));
+    sliderBar.setPosition(sliderPosition);
+    sliderBar.setFillColor(sf::Color(200, 200, 200));
+    
+
+    sf::RectangleShape sliderHBar(sf::Vector2f(sliderWidth, sliderHeight));
+    sliderHBar.setPosition(sliderHPosition);
+    sliderHBar.setFillColor(sf::Color(200, 200, 200));
+    controller.draw(sliderHBar);
+
+    sf::RectangleShape zeroLine(sf::Vector2f(sliderWidth, 1.f));
+    zeroLine.setPosition((controllerLength - sliderWidth) / 2.f, 3*upperSliderMargin + 0.5*(controllerHeight - 3*upperSliderMargin - downMargin));
+    zeroLine.setFillColor(sf::Color(150, 150, 150, 100));
+
+/*     sf::RectangleShape positiveLine(sf::Vector2f(sliderWidth, 1.f));
+    positiveLine.setPosition((controllerLength - sliderWidth) / 2.f, graphPlate.getPosition().y + graphPlate.getSize().y / 4.f);
+    positiveLine.setFillColor(sf::Color(150, 150, 150, 100));
+
+    sf::RectangleShape negativeLine(sf::Vector2f(sliderWidth, 1.f));
+    negativeLine.setPosition((controllerLength - sliderWidth) / 2.f, graphPlate.getPosition().y + 3 * graphPlate.getSize().y / 4.f);
+    negativeLine.setFillColor(sf::Color(150, 150, 150, 100)); */
+
+    // Double ended queue to store points for magnetization plot
     std::deque<sf::CircleShape> points;
     while (window.isOpen() && controller.isOpen() && time < MAX_TIME) {
-        // Gestione eventi finestra principale
+        // Handle events in main window
         sf::Event event;
         while (window.pollEvent(event)) {
             if (event.type == sf::Event::Closed) {
@@ -134,22 +161,22 @@ void SpinConfiguration::runGraphics(int MAX_TIME, int BURNIN, int THINNING, int 
             }
         }
 
-        // Gestione eventi controller
+        // Handle events in controller window and modify the parameters if needed
         while (controller.pollEvent(event)) {
             if (event.type == sf::Event::Closed) {
                 controller.close();
                 window.close();
-            }
-            else if (event.type == sf::Event::MouseButtonPressed && event.mouseButton.button == sf::Mouse::Left) {
-                float mx = static_cast<float>(event.mouseButton.x);
-                float my = static_cast<float>(event.mouseButton.y);
+            } else if (event.type == sf::Event::MouseButtonPressed && event.mouseButton.button == sf::Mouse::Left) {
+                // Collect mouse position
+                double mx = static_cast<double>(event.mouseButton.x);
+                double my = static_cast<double>(event.mouseButton.y);
 
-                // Check slider temperatura
+                // Check if it is inside the temp slider
                 if (mx >= sliderPosition.x && mx <= sliderPosition.x + sliderWidth &&
                     my >= sliderPosition.y - 10 && my <= sliderPosition.y + sliderHeight + 10) {
                     draggingT = true;
                 }
-                // Check slider campo magnetico
+                // Check if it is inside the magnetic field slider
                 else if (mx >= sliderHPosition.x && mx <= sliderHPosition.x + sliderWidth &&
                          my >= sliderHPosition.y - 10 && my <= sliderHPosition.y + sliderHeight + 10) {
                     draggingH = true;
@@ -164,17 +191,17 @@ void SpinConfiguration::runGraphics(int MAX_TIME, int BURNIN, int THINNING, int 
                 if (draggingT) {
                     mx = std::clamp(mx, sliderPosition.x, sliderPosition.x + sliderWidth);
                     float ratio = (mx - sliderPosition.x) / sliderWidth;
-                    m_T = 0 + ratio * (5 - 0);
+                    m_T = 0 + ratio * (maxTemp - 0);
                 }
                 else if (draggingH) {
                     mx = std::clamp(mx, sliderHPosition.x, sliderHPosition.x + sliderWidth);
                     float ratioH = (mx - sliderHPosition.x) / sliderWidth;
-                    m_h = -1 + ratioH * (1 - (-1));
+                    m_h = -1 + ratioH * (maxH - (minH));
                 }
             }
         }
 
-        // Disegna la finestra principale
+        // Draw the lattice
         window.clear(sf::Color::Black);
         int reducedL = L / (sizeBlur > 0 ? sizeBlur : 1);
         for (int rrow = 0; rrow < reducedL; ++rrow) {
@@ -197,36 +224,26 @@ void SpinConfiguration::runGraphics(int MAX_TIME, int BURNIN, int THINNING, int 
             }
         }
         
+        // Perform the sweep (each frame is THINNING sweeps)
         for (int _ = 0; _ < THINNING; ++_) {
             this->sweep();
         }
+        time++;
+        // Main window is ready to be displayed
         window.display();
 
-        // Statistiche
-        if (time >= BURNIN && m_keepTrackof[0]) {
-            m_results.storeMagnetization(this->getMagnetization());
-        }
-        if (time >= BURNIN && m_keepTrackof[1]) {
-            m_results.storeEnergy(this->getEnergy());
-        }
-        time++;
-
-        // Disegna controller
+        // Update the controller window
         controller.clear(sf::Color(40, 40, 40));
-
-        // SLIDER TEMPERATURA
-        sf::RectangleShape sliderBar(sf::Vector2f(sliderWidth, sliderHeight));
-        sliderBar.setPosition(sliderPosition);
-        sliderBar.setFillColor(sf::Color(200, 200, 200));
         controller.draw(sliderBar);
-
-        double normalizedT = (m_T - 0.) / (5. - 0.);
+        controller.draw(sliderHBar);
+        
+        // Draw the knob for the temperature slider
+        double normalizedT = (m_T - 0.) / (maxTemp - 0.);
         sf::CircleShape sliderKnob(knobRadius);
         sliderKnob.setFillColor(sf::Color::White);
         sliderKnob.setOrigin(knobRadius, knobRadius);
         sliderKnob.setPosition(sliderPosition.x + normalizedT * sliderWidth, sliderPosition.y + sliderHeight / 2.f);
         controller.draw(sliderKnob);
-
         sf::Text textT;
         textT.setFont(font);
         textT.setCharacterSize(16);
@@ -235,19 +252,13 @@ void SpinConfiguration::runGraphics(int MAX_TIME, int BURNIN, int THINNING, int 
         textT.setPosition(sliderPosition.x, sliderPosition.y - 30.f);
         controller.draw(textT);
 
-        // SLIDER CAMPO MAGNETICO
-        sf::RectangleShape sliderHBar(sf::Vector2f(sliderWidth, sliderHeight));
-        sliderHBar.setPosition(sliderHPosition);
-        sliderHBar.setFillColor(sf::Color(200, 200, 200));
-        controller.draw(sliderHBar);
-
-        double normalizedH = (m_h - (-1.)) / (1. - (-1.));
+        // Draw the knob for the magnetic field slider
+        double normalizedH = (m_h - (minH)) / (maxH - (minH));
         sf::CircleShape sliderHKnob(knobRadius);
         sliderHKnob.setFillColor(sf::Color::White);
         sliderHKnob.setOrigin(knobRadius, knobRadius);
         sliderHKnob.setPosition(sliderHPosition.x + normalizedH * sliderWidth, sliderHPosition.y + sliderHeight / 2.f);
         controller.draw(sliderHKnob);
-
         sf::Text textH;
         textH.setFont(font);
         textH.setCharacterSize(16);
@@ -258,7 +269,6 @@ void SpinConfiguration::runGraphics(int MAX_TIME, int BURNIN, int THINNING, int 
 
 
         // Magnetization plot
-        int downMargin = 30;
         sf::RectangleShape graphPlate(sf::Vector2f(sliderWidth, controllerHeight - 3*upperSliderMargin - downMargin));
         graphPlate.setPosition((controllerLength - sliderWidth) / 2.f, 2*upperSliderMargin + 2*sliderHeight + 40.f);
         graphPlate.setFillColor(sf::Color(70, 70, 70));
@@ -275,7 +285,7 @@ void SpinConfiguration::runGraphics(int MAX_TIME, int BURNIN, int THINNING, int 
         newPoint.setOrigin(0,newPoint.getRadius());
         sf::Color c = sf::Color::White;
         newPoint.setFillColor(c);
-        newPoint.setPosition(sf::Vector2f((controllerLength + sliderWidth)/2, 3*upperSliderMargin + 0.8*0.5*graphPlate.getSize().y*(1 - this->getMagnetization())));
+        newPoint.setPosition(sf::Vector2f((controllerLength + sliderWidth)/2, 3*upperSliderMargin + 0.5*graphPlate.getSize().y*(1 - this->getMagnetization())));
         points.push_back(newPoint);
             
         for(auto& p : points){
@@ -283,7 +293,10 @@ void SpinConfiguration::runGraphics(int MAX_TIME, int BURNIN, int THINNING, int 
             p.setPosition(new_x, p.getPosition().y); 
             controller.draw(p);
         }    
+
         
+        controller.draw(zeroLine);
+
         controller.display();
     }
 }

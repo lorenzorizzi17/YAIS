@@ -11,7 +11,7 @@ int main() {
     int N = 200*200; 
     double H = 0;
     int MAX_TIME = 1000;
-    int THINNING = 10;
+    int THINNING = 5;
     int BURNIN = 100;
     double T = 2; // 1.1 + i * 0.2;
     // Build the lattice
@@ -21,7 +21,7 @@ int main() {
     config.setPBC(true); // Set periodic boundary conditions
     config.keepTrack(false, false); // Magnetization only
     // Now run the MCMC chain
-    config.runGraphics(MAX_TIME, BURNIN, THINNING, 1);
+    config.runGraphics(MAX_TIME, THINNING, 5);
 
     // Get the results
     std::vector<double> energies = config.getResults().getEnergy();
