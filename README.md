@@ -52,6 +52,7 @@ config.runGraphics(THINNING, 5); // 5 is the blur size, default is 1 (no blur)
 ```
 This will launch two windows (a _main_ one and a _controller_ one):
 
-INSERT HERE GIF
+[Screencast from 2025-09-24 11-56-32.webm](https://github.com/user-attachments/assets/ea13a55a-4b63-4b19-ae9c-da7dbeeb7ac9)
+
 
 STILL WIP
