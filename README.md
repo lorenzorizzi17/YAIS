@@ -1,5 +1,5 @@
 # Yet Another Ising Simulation
-A simple 2D Ising model playground with customizable MCMC engines, now in C++. As a statistical mechanics aficionado, could I __ myself from implementing the so beloved Ising model?
+A simple 2D Ising model playground with customizable MCMC engines, now in C++. As a statistical mechanics enthusiast, I couldn't resist: I just had to implement the beloved Ising model
 
 ## How to use YAIS
 
