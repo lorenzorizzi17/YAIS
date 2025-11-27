@@ -2,7 +2,6 @@
 #include "configuration.hpp"
 
 
-
 void MCMCengine::run() {
     if (m_type == MCMCType::MetropolisHastings) {
         this->MetropolisHastings();

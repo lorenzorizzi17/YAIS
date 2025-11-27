@@ -77,7 +77,18 @@ void SpinConfiguration::sweep() {
 
 void SpinConfiguration::run(int MAX_TIME, int BURNIN, int THINNING) {
     // Run the simulation for a given number of steps
+    if (!m_results.getMagnetizations().empty()) {
+        m_results.getMagnetizations().clear();
+    }
+    if (!m_results.getEnergy().empty()) {
+        m_results.getEnergy().clear();
+    }
     m_results.getMagnetizations().reserve(MAX_TIME);
+    m_results.getEnergy().reserve(MAX_TIME);
+
+    //std::cout << "\nProgress over (n. samples): " << MAX_TIME - BURNIN << std::endl;
+    //std::cout << "\n-- Burn-in phase --\n";
+    bool inBurnin = false;
     for (int time = 0; time < MAX_TIME; ++time) {
         for(int _= 0; _ < THINNING; _++) {
             this->sweep();
@@ -88,10 +99,19 @@ void SpinConfiguration::run(int MAX_TIME, int BURNIN, int THINNING) {
         if (time >= BURNIN && m_keepTrackof[1]) {
             m_results.storeEnergy(this->getEnergy());
         }
+        if (time == BURNIN){
+            inBurnin = true;
+            //std::cout << "\n-- Sampling phase --\n" ;
+        }
+        if (!inBurnin) {
+            //std::cout << " " << time << " ";
+        } else {
+            //std::cout << " " << time - BURNIN << " ";
+        }
     }
 }
 
-void SpinConfiguration::runGraphics(int MAX_TIME, int THINNING, int sizeBlur = 0) {
+void SpinConfiguration::runGraphics(int MAX_TIME, int sizeBlur = 0) {
     int time = 0;
     int L = static_cast<int>(std::sqrt(m_N));
     int controllerLength = 400;
@@ -100,7 +120,7 @@ void SpinConfiguration::runGraphics(int MAX_TIME, int THINNING, int sizeBlur = 0
     int downMargin = 30;
 
     // Disable tracking by default in graphics mode
-    this->keepTrack(false, false) ; 
+    this->keepTrack(false, false); 
 
     sf::RenderWindow window(sf::VideoMode(800, 800), "Ising Model");
     sf::RenderWindow controller(sf::VideoMode(controllerLength, controllerHeight), "Controller");
@@ -109,11 +129,11 @@ void SpinConfiguration::runGraphics(int MAX_TIME, int THINNING, int sizeBlur = 0
 
     // Load the font
     sf::Font font;
-    if (!font.loadFromFile("res/Ubuntu-Regular.ttf")) {
+    if (!font.loadFromFile("../res/Ubuntu-Regular.ttf")) {
         throw std::runtime_error("Could not load font");
     }
 
-    //              SLIDERS              \\
+    //  SLIDERS\\
     // Dragging state for both sliders
     bool draggingT = false;
     bool draggingH = false;
@@ -141,17 +161,11 @@ void SpinConfiguration::runGraphics(int MAX_TIME, int THINNING, int sizeBlur = 0
     zeroLine.setPosition((controllerLength - sliderWidth) / 2.f, 3*upperSliderMargin + 0.5*(controllerHeight - 3*upperSliderMargin - downMargin));
     zeroLine.setFillColor(sf::Color(150, 150, 150, 100));
 
-/*     sf::RectangleShape positiveLine(sf::Vector2f(sliderWidth, 1.f));
-    positiveLine.setPosition((controllerLength - sliderWidth) / 2.f, graphPlate.getPosition().y + graphPlate.getSize().y / 4.f);
-    positiveLine.setFillColor(sf::Color(150, 150, 150, 100));
-
-    sf::RectangleShape negativeLine(sf::Vector2f(sliderWidth, 1.f));
-    negativeLine.setPosition((controllerLength - sliderWidth) / 2.f, graphPlate.getPosition().y + 3 * graphPlate.getSize().y / 4.f);
-    negativeLine.setFillColor(sf::Color(150, 150, 150, 100)); */
-
     // Double ended queue to store points for magnetization plot
     std::deque<sf::CircleShape> points;
+    std::cout << "Progress over (n. samples): " << MAX_TIME << std::endl;
     while (window.isOpen() && controller.isOpen() && time < MAX_TIME) {
+        std::cout << "Step: " << time << "\r";
         // Handle events in main window
         sf::Event event;
         while (window.pollEvent(event)) {
@@ -218,14 +232,14 @@ void SpinConfiguration::runGraphics(int MAX_TIME, int THINNING, int sizeBlur = 0
                 }
                 int colorValue = static_cast<int>((avgSpin + 1) * 127.5);
                 colorValue = std::clamp(colorValue, 0, 255);
-                sf::Color color(colorValue, colorValue, colorValue);
+                sf::Color color(255 - colorValue, 0, colorValue);
                 cell.setFillColor(color);
                 window.draw(cell);
             }
         }
         
         // Perform the sweep (each frame is THINNING sweeps)
-        for (int _ = 0; _ < THINNING; ++_) {
+        for (int _ = 0; _ < 1; ++_) {
             this->sweep();
         }
         time++;
@@ -303,18 +317,21 @@ void SpinConfiguration::runGraphics(int MAX_TIME, int THINNING, int sizeBlur = 0
 
 
 
-
 double SpinConfiguration::getEnergy() const {
     double energy = 0.0;
     int L = static_cast<int>(std::sqrt(m_N));
-    for (int i = 0; i < m_N; ++i) {
-        int row = i / L;
-        int col = i % L;
-        int spin = m_spins[i] ? 1 : -1;
-        std::array<int, 4> neighbours = this->getNeighbourhoodSpins(row, col);
-        for (int j = 0; j < 4; ++j) {
-            energy -= spin * neighbours[j]; // Interaction energy
+    for (int r = 0; r < L; ++r) {
+        for (int c = 0; c < L; ++c) {
+            int i = r*L + c;
+            int spin = m_spins[i] ? 1 : -1;
+            
+            // Considera solo due direzioni: destra e sotto
+            int right = m_spins[r*L + ((c+1)%L)] ? 1 : -1;
+            int down  = m_spins[((r+1)%L)*L + c] ? 1 : -1;
+            
+            energy -= spin * right;
+            energy -= spin * down;
         }
     }
-    return energy / 2.0; 
+    return energy / static_cast<double>(m_N);
 }

@@ -40,6 +40,7 @@ class SpinConfiguration {
     std::vector<bool>& getSpins() { return m_spins; }
     double getTemperature() const { return m_T; }
     double getMagneticField() const { return m_h; }
+    void setMagneticField(double h) { m_h = h; }
     Results& getResults() { return m_results; }
 
     // MCMC methods (single one spin flip or N spins)
@@ -58,7 +59,7 @@ class SpinConfiguration {
 
     // Graphics / simulations
     void run(int, int, int);
-    void runGraphics(int, int, int);
+    void runGraphics(int, int);
 
 };
 

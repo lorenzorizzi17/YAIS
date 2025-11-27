@@ -1,2 +1,8 @@
 .out
 .vscode/
+.data/
+*.Rmd
+grid.cpp
+build/
+data/
+*.o
