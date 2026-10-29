@@ -1,5 +1,5 @@
 # Yet Another Ising Simulation
-A simple 2D Ising model playground with customizable MCMC engines, now in C++. As a stat mech fan, did I really have a chance of not implementing the much beloved Ising model?
+A simple 2D Ising model playground with customizable MCMC engines, now in C++. 
 
 ## Requirements
 - SFML Library
